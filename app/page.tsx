@@ -17,17 +17,22 @@ import {
 	renderCanvas,
 } from '@/lib/canvas';
 import { ActiveElement } from '@/types/type';
-import { useMutation, useStorage } from '@liveblocks/react/suspense';
+import { useMutation, useRedo, useStorage, useUndo } from '@liveblocks/react/suspense';
 import { defaultNavElement } from '@/constants';
-import { handleDelete } from '@/lib/key-events';
+import { handleDelete, handleKeyDown } from '@/lib/key-events';
+import { handleImageUpload } from '@/lib/shapes';
 
 export default function Home() {
+	const undo = useUndo();
+	const redo = useRedo();
+
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
 	const fabricRef = useRef<fabric.Canvas | null>(null);
 	const isDrawing = useRef(false);
 	const shapeRef = useRef<fabric.Object | null>(null);
-	const selectedShapeRef = useRef<string | null>('rectangle');
+	const selectedShapeRef = useRef<string | null>(null);
 	const activeObjectRef = useRef<fabric.Object | null>(null);
+	const imageInputRef = useRef<HTMLInputElement>(null);
 	const [activeElement, setActiveElement] = useState<ActiveElement>({
 		name: '',
 		value: '',
@@ -50,11 +55,11 @@ export default function Home() {
 	useEffect(() => {
 		const canvas = initializeFabric({ canvasRef, fabricRef });
 
-		canvas.on('mouse:down', (options) => {
+		canvas.on('mouse:down', (options: any) => {
 			handleCanvasMouseDown({ options, canvas, isDrawing, shapeRef, selectedShapeRef });
 		});
 
-		canvas.on('mouse:move', (options) => {
+		canvas.on('mouse:move', (options: any) => {
 			handleCanvasMouseMove({
 				options,
 				canvas,
@@ -65,7 +70,7 @@ export default function Home() {
 			});
 		});
 
-		canvas.on('mouse:up', (options) => {
+		canvas.on('mouse:up', () => {
 			handleCanvasMouseUp({
 				canvas,
 				isDrawing,
@@ -77,7 +82,7 @@ export default function Home() {
 			});
 		});
 
-		canvas.on('object:modified', (options) => {
+		canvas.on('object:modified', (options: any) => {
 			handleCanvasObjectModified({
 				options,
 				syncShapeInStorage,
@@ -86,6 +91,17 @@ export default function Home() {
 
 		window.addEventListener('resize', () => {
 			handleResize({ canvas });
+		});
+
+		window.addEventListener('keydown', (e: any) => {
+			handleKeyDown({
+				e,
+				canvas: fabricRef.current,
+				undo,
+				redo,
+				syncShapeInStorage,
+				deleteShapeFromStorage,
+			});
 		});
 
 		return () => {
@@ -134,6 +150,15 @@ export default function Home() {
 				setActiveElement(defaultNavElement);
 				break;
 
+			case 'image':
+				imageInputRef.current?.click();
+				isDrawing.current = false;
+
+				if (fabricRef.current) {
+					fabricRef.current.isDrawingMode = false;
+				}
+				break;
+
 			default:
 				break;
 		}
@@ -143,8 +168,22 @@ export default function Home() {
 
 	return (
 		<main className="h-screen overflow-hidden">
-			<Navbar activeElement={activeElement} handleActiveElement={handleActiveElement} />
-			<section className="flex h-full flex-row">
+			<Navbar
+				activeElement={activeElement}
+				handleActiveElement={handleActiveElement}
+				imageInputRef={imageInputRef}
+				handleImageUpload={(e: any) => {
+					e.stopPropagation();
+
+					handleImageUpload({
+						file: e.target.files[0],
+						canvas: fabricRef as any,
+						shapeRef,
+						syncShapeInStorage,
+					});
+				}}
+			/>
+			<section className="flex flex-row h-full">
 				<LeftSidebar allShapes={Array.from(canvasObjects)} />
 				<Live canvasRef={canvasRef} />
 				<RightSidebar />
